@@ -25,6 +25,7 @@ def split(directory, recursive=False):
         filename = to_visit.pop()
 
         if recursive and os.path.isdir(filename):
+            logging.debug('Found directory at %s' % filename)
             to_visit.update(makepath(filename, f) for f in os.listdir(filename))
             continue
 
@@ -39,6 +40,7 @@ def split(directory, recursive=False):
         else:
             filemap['others'].add(filename)
 
+    logging.info('Found %d images with %d resolutions' % (sum(map(len, filemap)), len(filemap)))
     return filemap
 
 
@@ -50,7 +52,7 @@ def scatter(filemap, directory, fn):
         try:
             fn(filename, destiny)
         except shutil.Error:
-            pass
+            logging.warn('Failed to move %s to %s' % (filename, destiny))
 
     for resolution in WHITELIST:
         if resolution not in filemap or not filemap[resolution]:
@@ -61,6 +63,7 @@ def scatter(filemap, directory, fn):
         for filename in filemap[resolution]:
             try_move(filename, abspath)
 
+        logging.info('Moved %d files to %dx%d' % (len(filemap[resolution]), resolution[0], resolution[1]))
 
     for filename in filemap['others']:
         try_move(filename, directory)
