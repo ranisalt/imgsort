@@ -5,13 +5,16 @@ import shutil
 from PIL import Image
 
 
-whitelist = (
-    (1366, 768),
-    (1600, 900),
-    (1680, 1050),
-    (1920, 1080),
-    (1920, 1200),
-)
+WHITELIST = {
+        (1366, 768),
+        (1440, 900),
+        (1600, 900),
+        (1680, 1050),
+        (1920, 1080),
+        (1920, 1200),
+        (2560, 1440),
+        (2560, 1600),
+        }
 
 
 def split(directory, recursive=False):
@@ -74,7 +77,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Automatic wallpaper sorter by image dimensions')
+            description='Automatic wallpaper sorter by image dimensions')
     parser.add_argument('origin', type=os.path.abspath)
     parser.add_argument('destiny', type=os.path.abspath)
     parser.add_argument('-m', '--move', action='store_const', const=shutil.move, default=shutil.copy)
