@@ -46,11 +46,13 @@ def split(directory, recursive=False):
 
 def scatter(filemap, directory, fn):
     makepath = lambda resolution: os.path.join(directory, '%dx%d' % resolution)
+    samepath = lambda filename, destdir: os.path.split(filename)[0] == destdir
 
     def try_move(filename, destiny):
         logging.debug('Moving %s to %s' % (filename, destiny))
         try:
-            fn(filename, destiny)
+            if not samepath(filename, destiny):
+                fn(filename, destiny)
         except shutil.Error:
             logging.warn('Failed to move %s to %s' % (filename, destiny))
 
