@@ -47,7 +47,7 @@ def split(directory, recursive=False):
     return filemap
 
 
-def scatter(filemap, directory, fn):
+def scatter(filemap, directory, fn, ignore=False):
     makepath = lambda resolution: os.path.join(directory, '%dx%d' % resolution)
     samepath = lambda filename, destdir: os.path.split(filename)[0] == destdir
 
@@ -70,8 +70,9 @@ def scatter(filemap, directory, fn):
 
         logging.info('Moved %d files to %dx%d' % (len(filemap[resolution]), resolution[0], resolution[1]))
 
-    for filename in filemap['others']:
-        try_move(filename, directory)
+    if not ignore:
+        for filename in filemap['others']:
+            try_move(filename, directory)
 
 def main():
     import argparse
@@ -80,11 +81,12 @@ def main():
             description='Automatic wallpaper sorter by image dimensions')
     parser.add_argument('origin', type=os.path.abspath)
     parser.add_argument('destiny', type=os.path.abspath)
+    parser.add_argument('-i', '--ignore', action='store_true', help='ignore files not in resolution whitelist')
     parser.add_argument('-m', '--move', action='store_const', const=shutil.move, default=shutil.copy)
     parser.add_argument('-r', '--recursive', action='store_true')
 
     args = parser.parse_args()
-    scatter(split(args.origin, args.recursive), args.destiny, args.move)
+    scatter(split(args.origin, args.recursive), args.destiny, args.move, args.ignore)
 
 
 if __name__ == '__main__':
