@@ -2,91 +2,201 @@
 import logging
 import os
 import shutil
+from functools import lru_cache
+from typing import Any, Callable, Dict, List, Set, Tuple
+
+from dataclasses import dataclass, field
 from PIL import Image
 
+__version__ = '0.1'
 
-WHITELIST = {
-        (1366, 768),
-        (1440, 900),
-        (1600, 900),
-        (1680, 1050),
-        (1920, 1080),
-        (1920, 1200),
-        (2560, 1440),
-        (2560, 1600),
-        }
+try:
+    from image_match.goldberg import ImageSignature
+
+    # Signature generator
+    gis = ImageSignature()
+
+    def distance(a: float, b: float) -> float:
+        return gis.normalized_distance(a, b)
+
+    def signature(image: 'ImageMetadata') -> float:
+        return gis.generate_signature(image.filename)
+
+    IMAGE_MATCH_ENABLED = True
+except ImportError:
+    IMAGE_MATCH_ENABLED = False
+
+# Setup logging facility
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(fmt)
+logger.addHandler(ch)
 
 
-def split(directory, recursive=False):
-    filemap = {dimensions: set() for dimensions in WHITELIST}
-    filemap['others'] = set()
+@dataclass
+class ImageMetadata:
+    image: Image
+    _signature: float = field(init=False)
 
-    makepath = lambda directory, filename: os.path.join(directory, filename)
+    @property
+    def basename(self):
+        return os.path.basename(self.image.filename)
 
-    to_visit = set(makepath(directory, f) for f in os.listdir(directory))
-    while to_visit:
-        filename = to_visit.pop()
+    @property
+    def dirname(self):
+        return os.path.dirname(self.image.filename)
 
-        if recursive and os.path.isdir(filename):
-            logging.debug('Found directory at %s' % filename)
-            to_visit.update(makepath(filename, f) for f in os.listdir(filename))
-            continue
+    @property
+    def filename(self):
+        return self.image.filename
 
+    @property
+    def resolution(self):
+        return self.image.size
+
+    @property
+    def signature(self):
+        if not self._signature:
+            self._signature = signature(self)
+        return self._signature
+
+
+# Typing aliases
+ImageMap = Dict[os.PathLike, ImageMetadata]
+Resolution = Tuple[int, int]
+
+WHITELIST: Set[Resolution] = {
+    (1366, 768),
+    (1440, 900),
+    (1600, 900),
+    (1680, 1050),
+    (1920, 1080),
+    (1920, 1200),
+    (1920, 1280),
+    (1920, 1440),
+    (2560, 1440),
+    (2560, 1600),
+    (2880, 1800),
+    (3840, 1080),
+    (3840, 1200),
+    (3840, 2160),
+}
+
+
+def prepare(paths: List[os.PathLike], similarity: bool) -> List[ImageMetadata]:
+    images: List[ImageMetadata] = []
+
+    for path in paths:
         try:
-            image = Image.open(filename)
-        except IOError:
+            image = Image.open(path)
+        except IOError as e:
+            logger.warn(f'Error opening {path}: {e}')
             continue
 
-        if image.size in WHITELIST:
-            filemap[image.size].add(filename)
+        logger.debug(f'Processing metadata for {path}')
+        images.append(ImageMetadata(image=image))
 
-        else:
-            filemap['others'].add(filename)
-
-    logging.info('Found %d images with %d resolutions' % (sum(map(len, filemap)), len(filemap)))
-    return filemap
+    logger.info(f'Found {len(images)} images')
+    return images
 
 
-def scatter(filemap, directory, fn, ignore=False):
-    makepath = lambda resolution: os.path.join(directory, '%dx%d' % resolution)
-    samepath = lambda filename, destdir: os.path.split(filename)[0] == destdir
+def trim_by_whitelist(images: List[ImageMetadata]) -> List[ImageMetadata]:
+    return [image for image in images if image.resolution in WHITELIST]
 
-    def try_move(filename, destiny):
-        logging.debug('Moving %s to %s' % (filename, destiny))
-        try:
-            if not samepath(filename, destiny):
-                fn(filename, destiny)
-        except shutil.Error:
-            logging.warn('Failed to move %s to %s' % (filename, destiny))
 
-    for resolution in WHITELIST:
-        if resolution not in filemap or not filemap[resolution]:
+# TODO
+def trim_by_similarity(images: List[ImageMetadata]) -> List[ImageMetadata]:
+    return []
+
+
+@lru_cache()
+def path_to_resolution(dirname: os.PathLike, resolution: Resolution) \
+        -> os.PathLike:
+    if resolution in WHITELIST:
+        return os.path.join(dirname, '{}x{}'.format(*resolution))
+    return dirname
+
+
+def path_to_image(dirname: os.PathLike, image: ImageMetadata) -> os.PathLike:
+    path = path_to_resolution(dirname, image.resolution)
+    return os.path.join(path, image.basename)
+
+
+def scatter(images: List[ImageMetadata], output: os.PathLike) \
+        -> Tuple[List[os.PathLike], Dict[os.PathLike, os.PathLike]]:
+    needed_dirs = set()
+    if not os.path.isdir(output):
+        needed_dirs.add(output)
+
+    mapping = dict()
+    for image in images:
+        destdir = path_to_resolution(output, image.resolution)
+        dest = os.path.join(destdir, image.basename)
+
+        if os.path.isfile(dest) and os.path.samefile(image.filename, dest):
             continue
 
-        abspath = makepath(resolution)
-        os.makedirs(abspath, exist_ok=True)
-        for filename in filemap[resolution]:
-            try_move(filename, abspath)
+        needed_dirs.add(destdir)
+        mapping[image.filename] = dest
 
-        logging.info('Moved %d files to %dx%d' % (len(filemap[resolution]), resolution[0], resolution[1]))
+    return needed_dirs, mapping
 
-    if not ignore:
-        for filename in filemap['others']:
-            try_move(filename, directory)
+
+def create_dirs(dirs: List[os.PathLike], dry_run: bool):
+    for dir_ in dirs:
+        if not os.path.isdir(dir_):
+            logger.info(f'mkdir {dir_}')
+            if not dry_run:
+                os.makedirs(dir_)
+
+
+def copy_or_move(mapping: Dict[os.PathLike, os.PathLike],
+                 fn: Callable[[os.PathLike, os.PathLike], Any], dry_run: bool):
+    for orig, dest in mapping.items():
+        logger.info(f'{orig} -> {dest}')
+        if not dry_run:
+            fn(orig, dest)
+
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-            description='Automatic wallpaper sorter by image dimensions')
-    parser.add_argument('origin', type=os.path.abspath)
-    parser.add_argument('destiny', type=os.path.abspath)
-    parser.add_argument('-i', '--ignore', action='store_true', help='ignore files not in resolution whitelist')
-    parser.add_argument('-m', '--move', action='store_const', const=shutil.move, default=shutil.copy)
-    parser.add_argument('-r', '--recursive', action='store_true')
+        description='Automatic wallpaper sorter by image dimensions')
+
+    parser.add_argument('-i', '--ignore', action='store_true',
+                        help='ignore files not in resolution whitelist')
+    parser.add_argument('-m', '--move', action='store_const',
+                        const=shutil.move, default=shutil.copyfile)
+    parser.add_argument('-n', '--dry-run', action='store_true')
+
+    if IMAGE_MATCH_ENABLED:
+        match = parser.add_argument_group('similarity detection')
+        match.add_argument('-s', '--similar', action='store_true',
+                           help='try and find similar images')
+        match.add_argument('-t', '--threshold', type=float, default=0.4,
+                           metavar='T', help='similarity threshold')
+
+    # TODO: watch folder
+
+    parser.add_argument('images', nargs='*', type=os.path.abspath)
+    parser.add_argument('output', type=os.path.abspath)
 
     args = parser.parse_args()
-    scatter(split(args.origin, args.recursive), args.destiny, args.move, args.ignore)
+
+    images = prepare(args.images, args.similar)
+
+    if args.ignore:
+        count = len(images)
+        images = trim_by_whitelist(images)
+        logger.debug(f'Trimmed {count - len(images)} images by whitelist')
+
+    needed_dirs, mapping = scatter(images, args.output)
+    create_dirs(needed_dirs, args.dry_run)
+    copy_or_move(mapping, args.move, args.dry_run)
 
 
 if __name__ == '__main__':
