@@ -56,7 +56,7 @@ def is_duplicate(a: Metadata, b: Metadata, threshold: float):
     return dist < threshold
 
 
-def dedup(paths: List[os.PathLike], threshold: float) -> List[Metadata]:
+def find_dups(paths: List[os.PathLike], threshold: float) -> List[os.PathLike]:
     dups = []
     images = []
 
@@ -85,7 +85,14 @@ def dedup(paths: List[os.PathLike], threshold: float) -> List[Metadata]:
         else:
             images.append(meta)
 
-    return images, dups
+    return dups
+
+
+def clean(filenames: List[os.PathLike], dry_run: bool):
+    for filename in filenames:
+        logger.debug(f'Removing {filename}')
+        if not dry_run:
+            os.remove(filename)
 
 
 def main():
@@ -110,8 +117,8 @@ def main():
     logger.setLevel(args.debug)
     logger.addHandler(ch)
 
-    images, dups = dedup(args.images, args.threshold)
-    print(len(dups))
+    dups = find_dups(args.images, args.threshold)
+    clean(dups, args.dry_run)
 
 
 if __name__ == '__main__':
