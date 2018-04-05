@@ -39,7 +39,7 @@ class ImageMetadata:
         return os.path.dirname(self.filename)
 
 
-def prepare(paths: List[os.PathLike], similarity: bool) \
+def prepare(paths: List[os.PathLike]) \
         -> Tuple[List[ImageMetadata], FrozenSet[Resolution]]:
     images: List[ImageMetadata] = []
     whitelist = Counter()
@@ -117,7 +117,7 @@ def main():
 
     args = parser.parse_args()
 
-    images, whitelist = prepare(args.images, args.similar)
+    images, whitelist = prepare(args.images)
 
     needed_dirs, mapping = scatter(images, whitelist, args.output)
     create_dirs(needed_dirs, args.dry_run)
