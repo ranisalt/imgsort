@@ -1,19 +1,18 @@
 import logging
 import math
 import os
+from dataclasses import dataclass
 from typing import List, Tuple
 
 import numpy as np
-from dataclasses import dataclass
 from image_match.goldberg import ImageSignature
 from PIL import Image
 
+# Setup logging facility
+logger = logging.getLogger('walsort')
+
 # Typing aliases
 Resolution = Tuple[int, int]
-
-# Setup logging facility
-logger = logging.getLogger(__name__)
-fmt = logging.Formatter('[%(levelname)s - %(filename)s:%(lineno)d] - %(message)s')
 
 
 @dataclass
@@ -95,31 +94,6 @@ def clean(filenames: List[os.PathLike], dry_run: bool):
             os.remove(filename)
 
 
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description='Automatic wallpaper deduplicator by image similarity')
-
-    parser.add_argument('-d', '--debug', action='store_const', const=logging.DEBUG, default=logging.INFO)
-    parser.add_argument('-n', '--dry-run', action='store_true')
-    parser.add_argument('-t', '--threshold', type=float, default=0.4,
-                       metavar='T', help='similarity threshold')
-
-    parser.add_argument('images', nargs='*', type=os.path.abspath)
-
-    args = parser.parse_args()
-
-    ch = logging.StreamHandler()
-    ch.setLevel(args.debug)
-    ch.setFormatter(fmt)
-
-    logger.setLevel(args.debug)
-    logger.addHandler(ch)
-
+def main(args):
     dups = find_dups(args.images, args.threshold)
     clean(dups, args.dry_run)
-
-
-if __name__ == '__main__':
-    main()

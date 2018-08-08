@@ -1,25 +1,15 @@
-#!/usr/bin/env python3
 import logging
 import os
 import shutil
 from collections import Counter
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Callable, Dict, FrozenSet, List, Tuple
 
-from dataclasses import dataclass, field
 from PIL import Image
 
-__version__ = '0.1'
-
 # Setup logging facility
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-fmt = logging.Formatter('[%(levelname)s - %(filename)s:%(lineno)d] - %(message)s')
-ch.setFormatter(fmt)
-logger.addHandler(ch)
-
+logger = logging.getLogger('walsort')
 
 # Typing aliases
 Resolution = Tuple[int, int]
@@ -56,7 +46,7 @@ def prepare(paths: List[os.PathLike]) \
         whitelist[image.size] += 1
 
     logger.info(f'Found {len(images)} images')
-    return images, frozenset({res for res in whitelist if whitelist[res] > 4})
+    return images, frozenset({res for res in whitelist if whitelist[res] >= 10})
 
 
 def scatter(images: List[ImageMetadata],
@@ -100,29 +90,9 @@ def copy_or_move(mapping: Dict[os.PathLike, os.PathLike],
             fn(orig, dest)
 
 
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description='Automatic wallpaper sorter by image dimensions')
-
-    parser.add_argument('-m', '--move', action='store_const',
-                        const=shutil.move, default=shutil.copyfile)
-    parser.add_argument('-n', '--dry-run', action='store_true')
-
-    # TODO: watch folder
-
-    parser.add_argument('images', nargs='*', type=os.path.abspath)
-    parser.add_argument('output', type=os.path.abspath)
-
-    args = parser.parse_args()
-
+def main(args):
     images, whitelist = prepare(args.images)
 
     needed_dirs, mapping = scatter(images, whitelist, args.output)
     create_dirs(needed_dirs, args.dry_run)
     copy_or_move(mapping, args.move, args.dry_run)
-
-
-if __name__ == '__main__':
-    main()

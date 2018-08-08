@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "walsort"
+version = "0.1.0"
+description = "Automatic wallpaper sorter by image dimensions"
+authors = ["Ranieri Althoff <ranisalt@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.5"
+dataclasses = "^0.6.0"
+image-match = {git = "https://github.com/ranisalt/image-match.git", optional = true}
+numpy = "^1.15"
+pillow = "^5.2"
+scipy = "^1.1"
+
+[tool.poetry.dev-dependencies]
+
+[tool.poetry.extras]
+dedup = ["image-match"]
